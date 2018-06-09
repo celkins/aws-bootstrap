@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bootstrap IAM resources
+
+Parameters:
+  AdministratorPrincipal:
+    Description: ARN of principal that can assume the administrator role
+    Type: String
+
+  AdministratorMFARequired:
+    Description: true if the administrator role should require MFA
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+
+  DeveloperPrincipal:
+    Description: ARN of principal that can assume the developer role
+    Type: String
+
+  DeveloperMFARequired:
+    Description: true if the developer role should require MFA
+    Type: String
+    AllowedValues: [true, false]
+    Default: true
+
+Resources:
+  AdministratorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref AdministratorPrincipal
+            Action:
+              - sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: !Ref AdministratorMFARequired
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        - arn:aws:iam::aws:policy/job-function/Billing
+
+  DeveloperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Ref DeveloperPrincipal
+            Action:
+              - sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: !Ref DeveloperMFARequired
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/IAMReadOnlyAccess
+        - arn:aws:iam::aws:policy/PowerUserAccess
+
+Outputs:
+  AdministratorRole:
+    Description: ARN of the administrator role
+    Value: !GetAtt AdministratorRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AdministratorRole"
+
+  DeveloperRole:
+    Description: ARN of the developer role
+    Value: !GetAtt DeveloperRole.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DeveloperRole"

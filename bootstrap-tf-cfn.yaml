@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Bootstrap Terraform resources
+
+Resources:
+  StateBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+    DeletionPolicy: Retain
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: LockID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: LockID
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+    DeletionPolicy: Retain
+
+Outputs:
+  StateBucket:
+    Description: Name of the state bucket
+    Value: !Ref StateBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-StateBucket"
+
+  StateTable:
+    Description: Name of the state table
+    Value: !Ref StateTable
+    Export:
+      Name: !Sub "${AWS::StackName}-StateTable"
