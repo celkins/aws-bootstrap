@@ -1,28 +1,143 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Bootstrap IAM resources
 
-Parameters:
-  AdministratorPrincipal:
-    Description: ARN of principal that can assume the administrator role
-    Type: String
-
-  AdministratorMFARequired:
-    Description: true if the administrator role should require MFA
-    Type: String
-    AllowedValues: [true, false]
-    Default: true
-
-  DeveloperPrincipal:
-    Description: ARN of principal that can assume the developer role
-    Type: String
-
-  DeveloperMFARequired:
-    Description: true if the developer role should require MFA
-    Type: String
-    AllowedValues: [true, false]
-    Default: true
-
 Resources:
+  UserGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/ReadOnlyAccess
+      Policies:
+        # https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_examples_aws_my-sec-creds-self-manage.html
+        - PolicyName: RequireMFA
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowViewAccountInfo
+                Effect: Allow
+                Action:
+                  - iam:GetAccountPasswordPolicy
+                  - iam:GetAccountSummary
+                  - iam:ListVirtualMFADevices
+                Resource: '*'
+              - Sid: AllowManageOwnPasswords
+                Effect: Allow
+                Action:
+                  - iam:ChangePassword
+                  - iam:GetUser
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: AllowManageOwnAccessKeys
+                Effect: Allow
+                Action:
+                  - iam:CreateAccessKey
+                  - iam:DeleteAccessKey
+                  - iam:ListAccessKeys
+                  - iam:UpdateAccessKey
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: AllowManageOwnSigningCertificates
+                Effect: Allow
+                Action:
+                  - iam:DeleteSigningCertificate
+                  - iam:ListSigningCertificates
+                  - iam:UpdateSigningCertificate
+                  - iam:UploadSigningCertificate
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: AllowManageOwnSSHPublicKeys
+                Effect: Allow
+                Action:
+                  - iam:DeleteSSHPublicKey
+                  - iam:GetSSHPublicKey
+                  - iam:ListSSHPublicKeys
+                  - iam:UpdateSSHPublicKey
+                  - iam:UploadSSHPublicKey
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: AllowManageOwnGitCredentials
+                Effect: Allow
+                Action:
+                  - iam:CreateServiceSpecificCredential
+                  - iam:DeleteServiceSpecificCredential
+                  - iam:ListServiceSpecificCredentials
+                  - iam:ResetServiceSpecificCredential
+                  - iam:UpdateServiceSpecificCredential
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: AllowManageOwnVirtualMFADevice
+                Effect: Allow
+                Action:
+                  - iam:CreateVirtualMFADevice
+                  - iam:DeleteVirtualMFADevice
+                Resource: 'arn:aws:iam::*:mfa/${aws:username}'
+              - Sid: AllowManageOwnUserMFA
+                Effect: Allow
+                Action:
+                  - iam:DeactivateMFADevice
+                  - iam:EnableMFADevice
+                  - iam:GetUser
+                  - iam:ListMFADevices
+                  - iam:ResyncMFADevice
+                Resource: 'arn:aws:iam::*:user/${aws:username}'
+              - Sid: DenyAllExceptListedIfNoMFA
+                Effect: Deny
+                NotAction:
+                  - iam:CreateVirtualMFADevice
+                  - iam:EnableMFADevice
+                  - iam:GetUser
+                  - iam:ListMFADevices
+                  - iam:ListVirtualMFADevices
+                  - iam:ResyncMFADevice
+                  - sts:GetSessionToken
+                Resource: '*'
+                Condition:
+                  BoolIfExists:
+                    aws:MultiFactorAuthPresent: false
+
+  AdministratorGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      Policies:
+        - PolicyName: RequireMFA
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DenyAllIfNoMFA
+                Effect: Deny
+                Action: '*'
+                Resource: '*'
+                Condition:
+                  BoolIfExists:
+                    aws:MultiFactorAuthPresent: false
+        - PolicyName: AdministratorRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowAssumeAdministratorRole
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !GetAtt AdministratorRole.Arn
+
+  DeveloperGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      Policies:
+        - PolicyName: RequireMFA
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: DenyAllIfNoMFA
+                Effect: Deny
+                Action: '*'
+                Resource: '*'
+                Condition:
+                  BoolIfExists:
+                    aws:MultiFactorAuthPresent: false
+        - PolicyName: DeveloperRole
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowAssumeDeveloperRole
+                Effect: Allow
+                Action: sts:AssumeRole
+                Resource: !GetAtt DeveloperRole.Arn
+
   AdministratorRole:
     Type: AWS::IAM::Role
     Properties:
@@ -32,12 +147,11 @@ Resources:
           - Effect: Allow
             Principal:
               AWS:
-                - !Ref AdministratorPrincipal
-            Action:
-              - sts:AssumeRole
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: sts:AssumeRole
             Condition:
               Bool:
-                aws:MultiFactorAuthPresent: !Ref AdministratorMFARequired
+                aws:MultiFactorAuthPresent: true
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AdministratorAccess
         - arn:aws:iam::aws:policy/job-function/Billing
@@ -51,25 +165,42 @@ Resources:
           - Effect: Allow
             Principal:
               AWS:
-                - !Ref DeveloperPrincipal
-            Action:
-              - sts:AssumeRole
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: sts:AssumeRole
             Condition:
               Bool:
-                aws:MultiFactorAuthPresent: !Ref DeveloperMFARequired
+                aws:MultiFactorAuthPresent: true
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/IAMReadOnlyAccess
         - arn:aws:iam::aws:policy/PowerUserAccess
 
 Outputs:
+  AdministratorGroup:
+    Description: ARN of the administrator group
+    Value: !GetAtt AdministratorGroup.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-AdministratorGroup"
+
   AdministratorRole:
     Description: ARN of the administrator role
     Value: !GetAtt AdministratorRole.Arn
     Export:
       Name: !Sub "${AWS::StackName}-AdministratorRole"
 
+  DeveloperGroup:
+    Description: ARN of the developer group
+    Value: !GetAtt DeveloperGroup.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DeveloperGroup"
+
   DeveloperRole:
     Description: ARN of the developer role
     Value: !GetAtt DeveloperRole.Arn
     Export:
       Name: !Sub "${AWS::StackName}-DeveloperRole"
+
+  UserGroup:
+    Description: ARN of the user group
+    Value: !GetAtt UserGroup.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UserGroup"

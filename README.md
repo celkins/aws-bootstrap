@@ -10,8 +10,9 @@ CloudFormation templates for bootstrapping (my) AWS account(s).
 
 Bootstrap IAM by creating a CloudFormation stack that manages the following resources:
 
-- IAM administrator role that trusts an AWS principal
-- IAM developer role that trusts an AWS principal
+- Group that allows self-management of user credentials and read-only account access for members using MFA devices
+- Administrator group and role
+- Developer group and role
 
 This stack can be created via the console immediately after account creation (easy) or later with the CLI (hard, because it requires creating access keys for the root account [or creating some other adminstrator-ish role]):
 
@@ -19,8 +20,7 @@ This stack can be created via the console immediately after account creation (ea
 aws cloudformation create-stack                     \
     --stack-name <value>                            \
     --template-body file://./bootstrap-iam-cfn.yaml \
-    --capabilities CAPABILITY_IAM                   \
-    --parameters ParameterKey=AdministratorPrincipal,ParameterValue=<value> ParameterKey=DeveloperPrincipal,ParameterValue=<value>
+    --capabilities CAPABILITY_IAM
 ```
 
 ### Terraform
